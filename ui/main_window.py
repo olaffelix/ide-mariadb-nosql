@@ -34,6 +34,8 @@ class MainWindow(QMainWindow):
         self.splitter = QSplitter()
         self.splitter.setOrientation(Qt.Vertical)
         self.tab_widget = QTabWidget()
+        self.tab_widget.setTabsClosable(True)
+        self.tab_widget.tabCloseRequested.connect(self.close_tab)
         self.splitter.addWidget(self.tab_widget)
         # Terminal/log inferior
         self.terminal = QTextEdit()
@@ -203,3 +205,7 @@ class MainWindow(QMainWindow):
                     self.connections[i] = updated_conn
                     break
             self.populate_connections()
+
+    def close_tab(self, index):
+        self.tab_widget.removeTab(index)
+
