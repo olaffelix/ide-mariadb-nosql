@@ -1,0 +1,5 @@
+# Dependencias para el proyecto IDE MariaDB JSON
+PyQt5>=5.15
+PyMySQL>=1.0
+sqlalchemy>=2.0
+

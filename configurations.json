@@ -1,0 +1,11 @@
+{
+  "connections": [
+    {
+      "name": "MariaDB Local",
+      "host": "localhost",
+      "user": "root",
+      "password": "toor",
+      "port": 3306
+    }
+  ]
+}
