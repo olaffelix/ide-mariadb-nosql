@@ -55,6 +55,7 @@ class MainWindow(QMainWindow):
             dock_layout.removeWidget(old_menu)
             old_menu.deleteLater()
         dock_layout.insertWidget(0, self.top_menu)
+        # Ya no agregar como toolbar global
         self.addDockWidget(Qt.RightDockWidgetArea, self.dock)
         self.populate_connections()
         self.tree_widget.itemExpanded.connect(self.handle_tree_expand)

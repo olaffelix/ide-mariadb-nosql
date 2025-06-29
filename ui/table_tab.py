@@ -29,10 +29,10 @@ class TableTab(QWidget):
         main_layout.addLayout(search_layout)
         # Barra de botones
         btn_layout = QHBoxLayout()
-        self.new_btn = QPushButton('+')
-        self.del_btn = QPushButton('-')
+        self.new_btn = QPushButton('🞡')
+        self.del_btn = QPushButton('—')
         self.edit_btn = QPushButton('✎')
-        self.reload_btn = QPushButton('Recargar')
+        self.reload_btn = QPushButton('⟳')
         self.view_mode = QComboBox()
         self.view_mode.addItems(['Tabla', 'JSON'])
         self.view_mode.currentTextChanged.connect(self.change_view_mode)
