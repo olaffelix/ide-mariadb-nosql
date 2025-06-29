@@ -1,21 +1,17 @@
 from PyQt5.QtWidgets import (
     QMainWindow,
-    QDockWidget,
-    QTreeWidget,
-    QTreeWidgetItem,
-    QTabWidget,
-    QHBoxLayout,
     QPushButton,
-    QWidget,
     QMessageBox,
-    QVBoxLayout,
-    QTextEdit,
-    QSplitter,
+    QTreeWidgetItem,
 )
 from PyQt5.QtCore import Qt
 from db.connection_manager import ConnectionManager
 from ui.table_tab import TableTab
 from widgets.connection_modal import load_config, save_config
+from ui.central_panel import CentralPanel
+from ui.terminal_panel import TerminalPanel
+from ui.side_dock import SideDock
+from ui.top_menu import TopMenu
 
 
 class MainWindow(QMainWindow):
@@ -26,52 +22,45 @@ class MainWindow(QMainWindow):
         self.showMaximized()
         if connections is None:
             config = load_config()
-            self.connections = config.get("connections", [])
+            self.connections = config.get('connections', [])
         else:
             self.connections = connections
+            print(self.connections)
         self.conn_manager = ConnectionManager(self.connections)
         # Panel central con splitter para terminal
-        self.splitter = QSplitter()
-        self.splitter.setOrientation(Qt.Vertical)
-        self.tab_widget = QTabWidget()
-        self.tab_widget.setTabsClosable(True)
-        self.tab_widget.tabCloseRequested.connect(self.close_tab)
-        self.splitter.addWidget(self.tab_widget)
-        # Terminal/log inferior
-        self.terminal = QTextEdit()
-        self.terminal.setReadOnly(True)
-        self.terminal.setMaximumHeight(180)
-        self.terminal.setMinimumHeight(80)
-        self.terminal.hide()  # Oculto por defecto
-        self.splitter.addWidget(self.terminal)
-        self.setCentralWidget(self.splitter)
+        self.central_panel = CentralPanel()
+        self.tab_widget = self.central_panel.tab_widget
+        self.terminal = self.central_panel.terminal
+        self.setCentralWidget(self.central_panel)
         # Dock lateral derecho
-        self.dock = QDockWidget("Conexiones/Bases/Tablas", self)
-        self.dock.setAllowedAreas(Qt.RightDockWidgetArea)
-        # Menú superior con botones +, -, ✎
-        menu_widget = QWidget()
-        menu_layout = QHBoxLayout()
-        self.add_btn = QPushButton("+")
-        self.del_btn = QPushButton("-")
-        self.edit_btn = QPushButton("✎")
-        menu_layout.addWidget(self.add_btn)
-        menu_layout.addWidget(self.del_btn)
-        menu_layout.addWidget(self.edit_btn)
-        menu_layout.addStretch()
-        menu_widget.setLayout(menu_layout)
+        self.dock = SideDock(self)
+        self.tree_widget = self.dock.tree_widget
+        # Menú superior con botones +, -, ✎, conectar y desconectar
+        self.top_menu = TopMenu()
+        self.add_btn = self.top_menu.add_btn
+        self.del_btn = self.top_menu.del_btn
+        self.edit_btn = self.top_menu.edit_btn
+        self.connect_btn = self.top_menu.connect_btn
+        self.disconnect_btn = self.top_menu.disconnect_btn
+        self.reload_btn = self.top_menu.reload_btn
+        self.connect_btn.clicked.connect(self.open_selected_connection)
+        self.disconnect_btn.clicked.connect(self.disconnect_selected_connection)
+        self.reload_btn.clicked.connect(self.reload_selected_connection)
         # Widget principal del dock
-        dock_main = QWidget()
-        dock_layout = QVBoxLayout()
-        dock_layout.addWidget(menu_widget)
-        self.tree_widget = QTreeWidget()
-        self.tree_widget.setHeaderLabels(["Conexiones/Bases/Tablas"])
-        dock_layout.addWidget(self.tree_widget)
-        dock_main.setLayout(dock_layout)
-        self.dock.setWidget(dock_main)
+        dock_main = self.dock.widget()
+        dock_layout = dock_main.layout()
+        # Elimina el menú duplicado del dock si existe
+        if dock_layout.itemAt(0) and hasattr(dock_layout.itemAt(0).widget(), 'layout'):
+            old_menu = dock_layout.itemAt(0).widget()
+            dock_layout.removeWidget(old_menu)
+            old_menu.deleteLater()
+        dock_layout.insertWidget(0, self.top_menu)
         self.addDockWidget(Qt.RightDockWidgetArea, self.dock)
         self.populate_connections()
         self.tree_widget.itemExpanded.connect(self.handle_tree_expand)
         self.tree_widget.itemDoubleClicked.connect(self.handle_tree_double_click)
+        self.tree_widget.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.tree_widget.customContextMenuRequested.connect(self.show_tree_context_menu)
         self.add_btn.clicked.connect(self.add_connection)
         self.del_btn.clicked.connect(self.delete_connection)
         self.edit_btn.clicked.connect(self.edit_connection)
@@ -81,6 +70,8 @@ class MainWindow(QMainWindow):
         self.terminal_shortcut = QPushButton("Terminal")
         self.terminal_shortcut.clicked.connect(self.toggle_terminal)
         self.statusBar().addPermanentWidget(self.terminal_shortcut)
+        self.tab_widget.setTabsClosable(True)
+        self.tab_widget.tabCloseRequested.connect(self.close_tab)
 
     def toggle_terminal(self):
         if self.terminal.isVisible():
@@ -104,7 +95,6 @@ class MainWindow(QMainWindow):
             conn_item.setData(0, Qt.UserRole, {"type": "connection", "conn": conn})
             self.tree_widget.addTopLevelItem(conn_item)
         self.tree_widget.expandAll()
-        save_config({"connections": self.connections})
         self.notify("Conexiones cargadas")
 
     def handle_tree_expand(self, item):
@@ -145,7 +135,11 @@ class MainWindow(QMainWindow):
 
     def handle_tree_double_click(self, item, column):
         data = item.data(0, Qt.UserRole)
-        if data and data.get("type") == "table":
+        if data and data.get("type") == "connection":
+            self.expand_and_connect(item)
+        elif data and data.get("type") == "database":
+            self.expand_and_load_tables(item)
+        elif data and data.get("type") == "table":
             conn = data["conn"]
             db = data["db"]
             table = data["table"]
@@ -158,6 +152,47 @@ class MainWindow(QMainWindow):
             self.tab_widget.addTab(tab, tab_name)
             self.tab_widget.setCurrentWidget(tab)
 
+    def expand_and_load_tables(self, item):
+        # Expande y carga tablas si no está expandido
+        if item.childCount() == 0:
+            self.handle_tree_expand(item)
+        self.tree_widget.expandItem(item)
+
+    def expand_and_connect(self, item):
+        # Expande y conecta si no está expandido
+        if item.childCount() == 0:
+            self.handle_tree_expand(item)
+        self.tree_widget.expandItem(item)
+
+    def open_selected_connection(self):
+        item = self.tree_widget.currentItem()
+        if item:
+            data = item.data(0, Qt.UserRole)
+            if data and data.get("type") == "connection":
+                self.expand_and_connect(item)
+
+    def show_tree_context_menu(self, pos):
+        item = self.tree_widget.itemAt(pos)
+        if not item:
+            return
+        data = item.data(0, Qt.UserRole)
+        from PyQt5.QtWidgets import QMenu
+        menu = QMenu()
+        if data and data.get("type") == "connection":
+            menu.addAction("Conectar", lambda: self.expand_and_connect(item))
+            menu.addAction("Editar", self.edit_connection)
+            menu.addAction("Desconectar", lambda: self.disconnect_connection(item))
+            menu.addAction("Eliminar", self.delete_connection)
+        elif data and data.get("type") == "database":
+            menu.addAction("Desconectar", lambda: self.disconnect_connection(item))
+        menu.exec_(self.tree_widget.viewport().mapToGlobal(pos))
+
+    def disconnect_connection(self, item):
+        # Simplemente colapsa el nodo y elimina hijos
+        item.takeChildren()
+        self.tree_widget.collapseItem(item)
+        self.notify("Conexión desconectada")
+
     def add_connection(self):
         from widgets.connection_modal import ConnectionModal
 
@@ -165,6 +200,7 @@ class MainWindow(QMainWindow):
         if dlg.exec_():
             new_conn = dlg.get_connection()
             self.connections.append(new_conn)
+            save_config({"connections": self.connections})
             self.populate_connections()
 
     def delete_connection(self):
@@ -185,6 +221,7 @@ class MainWindow(QMainWindow):
             self.connections = [
                 c for c in self.connections if c["name"] != conn["name"]
             ]
+            save_config({"connections": self.connections})
             self.populate_connections()
 
     def edit_connection(self):
@@ -204,8 +241,25 @@ class MainWindow(QMainWindow):
                 if c["name"] == conn["name"]:
                     self.connections[i] = updated_conn
                     break
+            save_config({"connections": self.connections})
             self.populate_connections()
 
     def close_tab(self, index):
         self.tab_widget.removeTab(index)
+
+    def disconnect_selected_connection(self):
+        item = self.tree_widget.currentItem()
+        if item:
+            data = item.data(0, Qt.UserRole)
+            if data and data.get("type") == "connection":
+                self.disconnect_connection(item)
+
+    def reload_selected_connection(self):
+        item = self.tree_widget.currentItem()
+        if item:
+            data = item.data(0, Qt.UserRole)
+            if data and data.get("type") == "connection":
+                # Desconecta y vuelve a conectar (recarga bases de datos)
+                self.disconnect_connection(item)
+                self.expand_and_connect(item)
 

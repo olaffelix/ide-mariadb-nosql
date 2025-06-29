@@ -203,6 +203,7 @@ class TableTab(QWidget):
         from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QDialogButtonBox
         dlg = QDialog(self)
         dlg.setWindowTitle('Editar Registro')
+        dlg.resize(600, 500)  # Igual que Editor JSON
         layout = QVBoxLayout()
         text_edit = QTextEdit()
         text_edit.setText(json.dumps(self.filtered_data[row]['value'], indent=2, ensure_ascii=False))

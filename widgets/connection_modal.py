@@ -3,6 +3,7 @@ import json
 import os
 
 CONFIG_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'configurations.json')
+print("CONFIG_FILE", CONFIG_FILE)
 
 def load_config():
     if os.path.exists(CONFIG_FILE):
