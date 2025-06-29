@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>JSON Editor</title>
+  <link href="https://cdn.jsdelivr.net/npm/jsoneditor@9.10.0/dist/jsoneditor.min.css" rel="stylesheet" type="text/css">
+  <style>
+    html, body, #jsoneditor {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: sans-serif;
+    }
+    #jsoneditor {
+      min-height: 400px;
+    }
+  </style>
+</head>
+<body>
+  <div id="jsoneditor"></div>
+  <script src="https://cdn.jsdelivr.net/npm/jsoneditor@9.10.0/dist/jsoneditor.min.js"></script>
+  <script>
+    const container = document.getElementById('jsoneditor');
+    const options = {
+      mode: 'tree',
+      modes: ['code', 'tree', 'view'],
+      onError: function (err) {
+        alert(err.toString());
+      }
+    };
+    const editor = new JSONEditor(container, options);
+    window.setJSON = function(json) {
+      try {
+        editor.set(json);
+      } catch (e) {
+        editor.set({error: e.toString()});
+      }
+    };
+  </script>
+</body>
+</html>

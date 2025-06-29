@@ -1,6 +1,8 @@
 from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QTableWidget, QTableWidgetItem, QMessageBox, QHBoxLayout, QLineEdit, QLabel, QComboBox, QTextEdit
-from PyQt5.QtCore import Qt
+from PyQt5.QtCore import Qt, QUrl
+from ui.TableTab.json_viewer import JsonViewer
 import json
+import os
 from widgets.json_modal import JsonModal
 
 class TableTab(QWidget):
@@ -46,8 +48,8 @@ class TableTab(QWidget):
         main_layout.addLayout(btn_layout)
         # Tabla y JSON viewer
         self.table_widget = QTableWidget()
-        self.json_viewer = QTextEdit()
-        self.json_viewer.setReadOnly(True)
+        # Visor JSON avanzado con QWebEngineView
+        self.json_viewer = JsonViewer()
         main_layout.addWidget(self.table_widget)
         main_layout.addWidget(self.json_viewer)
         self.setLayout(main_layout)
@@ -114,9 +116,10 @@ class TableTab(QWidget):
                 self.table_widget.setItem(row_idx, col_idx, item)
 
     def show_json_view(self):
-        # Mostrar todos los registros como JSON
+        # Mostrar todos los registros como JSON en el editor avanzado
         json_list = [d['value'] for d in self.filtered_data]
-        self.json_viewer.setText(json.dumps(json_list, indent=2, ensure_ascii=False))
+        json_str = json.dumps(json_list, indent=2, ensure_ascii=False)
+        self.json_viewer.set_json(json_str)
 
     def change_view_mode(self, mode):
         self.mode = mode
