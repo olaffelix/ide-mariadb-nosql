@@ -8,10 +8,10 @@ from PyQt5.QtCore import Qt
 from db.connection_manager import ConnectionManager
 from ui.table_tab import TableTab
 from widgets.connection_modal import load_config, save_config
-from ui.central_panel import CentralPanel
-from ui.terminal_panel import TerminalPanel
-from ui.side_dock import SideDock
-from ui.top_menu import TopMenu
+from ui.components.central_panel import CentralPanel
+from ui.components.side_dock import SideDock
+from ui.components.top_menu import TopMenu
+from ui.components.terminal_panel import TerminalPanel
 
 
 class MainWindow(QMainWindow):

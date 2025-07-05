@@ -1,9 +1,13 @@
-from PyQt5.QtWidgets import QWidget, QVBoxLayout, QPushButton, QTableWidget, QTableWidgetItem, QMessageBox, QHBoxLayout, QLineEdit, QLabel, QComboBox, QTextEdit
+from PyQt5.QtWidgets import QWidget, QVBoxLayout, QTableWidget, QTableWidgetItem, QMessageBox, QHBoxLayout, QLineEdit, QLabel, QComboBox, QTextEdit, QDialog, QDialogButtonBox
 from PyQt5.QtCore import Qt, QUrl
-from ui.TableTab.json_viewer import JsonViewer
+from ui.components.json_viewer import JsonViewer
+from ui.widgets.add_record_dialog import AddRecordDialog
+from ui.widgets.edit_record_dialog import EditRecordDialog
+from ui.components.toolbar_button import ToolBarButton
 import json
 import os
 from widgets.json_modal import JsonModal
+from ui.widgets.delete_record_helper import DeleteRecordHelper
 
 class TableTab(QWidget):
     def __init__(self, conn, db, table, conn_manager):
@@ -31,10 +35,10 @@ class TableTab(QWidget):
         main_layout.addLayout(search_layout)
         # Barra de botones
         btn_layout = QHBoxLayout()
-        self.new_btn = QPushButton('🞡')
-        self.del_btn = QPushButton('—')
-        self.edit_btn = QPushButton('✎')
-        self.reload_btn = QPushButton('⟳')
+        self.new_btn = ToolBarButton(text='🞡', tooltip='Nuevo registro')
+        self.del_btn = ToolBarButton(text='—', tooltip='Eliminar registro')
+        self.edit_btn = ToolBarButton(text='✎', tooltip='Editar registro')
+        self.reload_btn = ToolBarButton(text='⟳', tooltip='Recargar tabla')
         self.view_mode = QComboBox()
         self.view_mode.addItems(['Tabla', 'JSON'])
         self.view_mode.currentTextChanged.connect(self.change_view_mode)
@@ -57,7 +61,7 @@ class TableTab(QWidget):
         self.new_btn.clicked.connect(self.add_record)
         self.del_btn.clicked.connect(self.delete_record)
         self.edit_btn.clicked.connect(self.edit_record)
-        self.table_widget.cellDoubleClicked.connect(self.show_json_modal_from_table)
+        # self.table_widget.cellDoubleClicked.connect(self.show_json_modal_from_table)
         self.json_viewer.hide()
 
     def load_table_data(self):
@@ -127,36 +131,53 @@ class TableTab(QWidget):
 
     def show_json_modal_from_table(self, row, col):
         if row < len(self.filtered_data):
-            dlg = JsonModal(json.dumps(self.filtered_data[row]['value'], indent=2, ensure_ascii=False), editable=False)
-            dlg.show()
-            dlg.raise_()
-            dlg.activateWindow()
-            self._json_modal = dlg
+            # Usar JsonViewer editable en vez de QTextEdit
+            dlg = QDialog(self)
+            dlg.setWindowTitle('Editar Registro')
+            dlg.resize(700, 600)
+            layout = QVBoxLayout()
+            json_viewer = JsonViewer()
+            json_viewer.set_json(json.dumps(self.filtered_data[row]['value'], indent=2, ensure_ascii=False))
+            # Hacer editable el visor
+            json_viewer.page().runJavaScript('editor.setMode("code")')
+            layout.addWidget(json_viewer)
+            buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
+            layout.addWidget(buttons)
+            dlg.setLayout(layout)
+            buttons.accepted.connect(dlg.accept)
+            buttons.rejected.connect(dlg.reject)
+            if dlg.exec_():
+                # Obtener el JSON editado desde el visor
+                def get_json_callback(result):
+                    try:
+                        value_json = result
+                        import pymysql
+                        connection = pymysql.connect(
+                            host=self.conn['host'], user=self.conn['user'], password=self.conn['password'], port=self.conn['port'], database=self.db
+                        )
+                        with connection.cursor() as cursor:
+                            pk_col = self.columns[0]
+                            pk = self.filtered_data[row]['_pk']
+                            cursor.execute(f"UPDATE `{self.table}` SET value=%s WHERE `{pk_col}`=%s", (json.dumps(value_json, ensure_ascii=False), pk))
+                            connection.commit()
+                        connection.close()
+                        self.load_table_data()
+                        QMessageBox.information(self, 'Éxito', 'Registro editado correctamente.')
+                    except Exception as e:
+                        QMessageBox.critical(self, 'Error', f'Error al editar registro: {e}')
+                json_viewer.page().runJavaScript('editor.get()', get_json_callback)
 
     def add_record(self):
-        # Modal para ingresar un nuevo registro JSON
-        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QDialogButtonBox
-        dlg = QDialog(self)
-        dlg.setWindowTitle('Nuevo Registro')
-        layout = QVBoxLayout()
-        text_edit = QTextEdit()
-        text_edit.setPlaceholderText('Introduce el JSON del nuevo registro')
-        layout.addWidget(text_edit)
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        layout.addWidget(buttons)
-        dlg.setLayout(layout)
-        buttons.accepted.connect(dlg.accept)
-        buttons.rejected.connect(dlg.reject)
+        dlg = AddRecordDialog(self)
         if dlg.exec_():
             try:
-                value_json = json.loads(text_edit.toPlainText())
+                value_json = json.loads(dlg.get_json())
                 # Insertar en la base de datos
                 import pymysql
                 connection = pymysql.connect(
                     host=self.conn['host'], user=self.conn['user'], password=self.conn['password'], port=self.conn['port'], database=self.db
                 )
                 with connection.cursor() as cursor:
-                    # Solo insertamos el campo 'value' como JSON
                     cursor.execute(f"INSERT INTO `{self.table}` (value) VALUES (%s)", (json.dumps(value_json, ensure_ascii=False),))
                     connection.commit()
                 connection.close()
@@ -166,34 +187,12 @@ class TableTab(QWidget):
                 QMessageBox.critical(self, 'Error', f'Error al agregar registro: {e}')
 
     def delete_record(self):
-        # Eliminar el registro seleccionado (por _pk)
-        row = self.table_widget.currentRow()
-        if row < 0 or row >= len(self.filtered_data):
-            QMessageBox.warning(self, 'Eliminar Registro', 'Selecciona un registro para eliminar.')
-            return
-        pk = self.filtered_data[row]['_pk']
-        if pk is None:
-            QMessageBox.warning(self, 'Eliminar Registro', 'No se puede eliminar: no se encontró la llave primaria.')
-            return
-        reply = QMessageBox.question(self, 'Eliminar Registro', '¿Estás seguro de eliminar este registro?', QMessageBox.Yes | QMessageBox.No)
-        if reply == QMessageBox.Yes:
-            try:
-                import pymysql
-                connection = pymysql.connect(
-                    host=self.conn['host'], user=self.conn['user'], password=self.conn['password'], port=self.conn['port'], database=self.db
-                )
-                with connection.cursor() as cursor:
-                    pk_col = self.columns[0]
-                    cursor.execute(f"DELETE FROM `{self.table}` WHERE `{pk_col}`=%s", (pk,))
-                    connection.commit()
-                connection.close()
-                self.load_table_data()
-                QMessageBox.information(self, 'Éxito', 'Registro eliminado correctamente.')
-            except Exception as e:
-                QMessageBox.critical(self, 'Error', f'Error al eliminar registro: {e}')
+        DeleteRecordHelper.confirm_and_delete(
+            self, self.table_widget, self.filtered_data, self.columns,
+            self.conn, self.db, self.table, self.load_table_data
+        )
 
     def edit_record(self):
-        # Editar el registro seleccionado (solo campo value)
         row = self.table_widget.currentRow()
         if row < 0 or row >= len(self.filtered_data):
             QMessageBox.warning(self, 'Editar Registro', 'Selecciona un registro para editar.')
@@ -202,23 +201,10 @@ class TableTab(QWidget):
         if pk is None:
             QMessageBox.warning(self, 'Editar Registro', 'No se puede editar: no se encontró la llave primaria.')
             return
-        # Modal para editar JSON
-        from PyQt5.QtWidgets import QDialog, QVBoxLayout, QTextEdit, QDialogButtonBox
-        dlg = QDialog(self)
-        dlg.setWindowTitle('Editar Registro')
-        dlg.resize(600, 500)  # Igual que Editor JSON
-        layout = QVBoxLayout()
-        text_edit = QTextEdit()
-        text_edit.setText(json.dumps(self.filtered_data[row]['value'], indent=2, ensure_ascii=False))
-        layout.addWidget(text_edit)
-        buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
-        layout.addWidget(buttons)
-        dlg.setLayout(layout)
-        buttons.accepted.connect(dlg.accept)
-        buttons.rejected.connect(dlg.reject)
+        dlg = EditRecordDialog(self.filtered_data[row]['value'], self)
         if dlg.exec_():
             try:
-                value_json = json.loads(text_edit.toPlainText())
+                value_json = json.loads(dlg.get_json())
                 import pymysql
                 connection = pymysql.connect(
                     host=self.conn['host'], user=self.conn['user'], password=self.conn['password'], port=self.conn['port'], database=self.db

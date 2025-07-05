@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>JSON Editor</title>
+  <link href="https://cdn.jsdelivr.net/npm/jsoneditor@9.10.0/dist/jsoneditor.min.css" rel="stylesheet" type="text/css">
+  <style>
+    html, body, #jsoneditor {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      font-family: sans-serif;
+    }
+    #jsoneditor {
+      min-height: 400px;
+    }
+  </style>
+</head>
+<body>
+  <div id="jsoneditor"></div>
+  <script src="https://cdn.jsdelivr.net/npm/jsoneditor@9.10.0/dist/jsoneditor.min.js"></script>
+  <script>
+    const container = document.getElementById('jsoneditor');
+    const options = {
+      mode: 'code',
+      modes: ['code', 'tree', 'view'],
+      onError: function (err) {
+        console.error('JSON Editor Error:', err);
+      }
+    };
+    const editor = new JSONEditor(container, options);
+    
+    window.setJSON = function(jsonStr) {
+      try {
+        // Si recibimos un string, intentamos parsearlo
+        let jsonData;
+        if (typeof jsonStr === 'string') {
+          // Manejar strings escapados desde Python
+          jsonStr = jsonStr.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+          jsonData = JSON.parse(jsonStr);
+        } else {
+          jsonData = jsonStr;
+        }
+        editor.set(jsonData);
+      } catch (e) {
+        console.error('Error setting JSON:', e);
+        editor.set({error: e.toString()});
+      }
+    };
+    
+    window.getJSON = function() {
+      try {
+        return editor.get();
+      } catch (e) {
+        console.error('Error getting JSON:', e);
+        return {error: e.toString()};
+      }
+    };
+    
+    window.getJSONText = function() {
+      try {
+        return editor.getText();
+      } catch (e) {
+        console.error('Error getting JSON text:', e);
+        return JSON.stringify({error: e.toString()}, null, 2);
+      }
+    };
+  </script>
+</body>
+</html>
